@@ -1,8 +1,35 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertPixelEventSchema, shopifyEventSchema } from "@shared/schema";
 import { z } from "zod";
+
+// Enhanced WebSocket client store with liveness tracking
+interface WebSocketClient {
+  ws: WebSocket;
+  isAlive: boolean;
+}
+
+const wsClients = new Set<WebSocketClient>();
+
+// Function to broadcast events to all connected WebSocket clients
+function broadcastEvent(eventType: string, data: any) {
+  const message = JSON.stringify({ type: eventType, data, timestamp: new Date().toISOString() });
+  
+  wsClients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(message);
+      } catch (error) {
+        console.error('Error broadcasting to WebSocket client:', error);
+        wsClients.delete(client);
+      }
+    } else {
+      wsClients.delete(client);
+    }
+  });
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // CORS middleware for all API routes (needed for cross-origin requests from Shopify)
@@ -42,6 +69,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Store the event
       const savedEvent = await storage.createPixelEvent(insertData);
+      
+      // Broadcast the new event to all connected WebSocket clients
+      broadcastEvent('pixel_event', savedEvent);
       
       res.status(201).json({ 
         success: true, 
@@ -181,6 +211,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+
+  // Set up WebSocket server for real-time event streaming
+  const wss = new WebSocketServer({ 
+    server: httpServer,
+    path: '/ws'
+  });
+
+  wss.on('connection', (ws, req) => {
+    console.log('New WebSocket connection established');
+    
+    const client: WebSocketClient = { ws, isAlive: true };
+    wsClients.add(client);
+
+    // Send initial connection confirmation
+    ws.send(JSON.stringify({ 
+      type: 'connection_established', 
+      data: { message: 'Connected to Shopify Analytics stream' },
+      timestamp: new Date().toISOString()
+    }));
+
+    // Handle pong responses to maintain connection liveness
+    ws.on('pong', () => {
+      client.isAlive = true;
+    });
+
+    // Handle WebSocket messages from clients
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        
+        // Handle subscription to specific shop domains or event types
+        if (data.type === 'subscribe') {
+          // Store subscription preferences if needed
+          console.log('Client subscribed to:', data.filters);
+          ws.send(JSON.stringify({
+            type: 'subscription_confirmed',
+            data: { filters: data.filters },
+            timestamp: new Date().toISOString()
+          }));
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    });
+
+    // Handle client disconnection
+    ws.on('close', () => {
+      console.log('WebSocket connection closed');
+      wsClients.delete(client);
+    });
+
+    // Handle connection errors
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      wsClients.delete(client);
+    });
+  });
+
+  // Periodic heartbeat to keep connections alive and clean up dead ones
+  const heartbeatInterval = setInterval(() => {
+    wsClients.forEach((client) => {
+      if (!client.isAlive) {
+        // Client didn't respond to last ping, terminate connection
+        console.log('Terminating dead WebSocket connection');
+        client.ws.terminate();
+        wsClients.delete(client);
+        return;
+      }
+      
+      if (client.ws.readyState === WebSocket.OPEN) {
+        // Mark as not alive and send ping
+        client.isAlive = false;
+        try {
+          client.ws.ping();
+        } catch (error) {
+          console.error('Error pinging WebSocket client:', error);
+          wsClients.delete(client);
+        }
+      } else {
+        // Connection is already closed
+        wsClients.delete(client);
+      }
+    });
+  }, 30000); // Every 30 seconds
+
+  // Clean up interval on server shutdown
+  process.on('SIGINT', () => {
+    clearInterval(heartbeatInterval);
+    wsClients.forEach((client) => {
+      client.ws.terminate();
+    });
+    wsClients.clear();
+  });
+
+  console.log('WebSocket server initialized on /ws');
 
   return httpServer;
 }
