@@ -116,6 +116,23 @@ export class MemStorage implements IStorage {
     cartUpdates: number;
     conversionRate: number;
     eventCounts: Record<string, number>;
+    topEvents: { name: string; count: number }[];
+    revenueMetrics: {
+      totalRevenue: number;
+      averageOrderValue: number;
+      ordersCount: number;
+    };
+    sessionMetrics: {
+      avgSessionEvents: number;
+      bounceRate: number;
+      activeUsers: number;
+    };
+    periodComparison: {
+      totalEvents: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      uniqueVisitors: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      cartUpdates: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      conversionRate: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+    };
   }> {
     let events = Array.from(this.pixelEvents.values());
 
@@ -149,12 +166,15 @@ export class MemStorage implements IStorage {
       events = events.filter(event => new Date(event.timestamp) >= startDate);
     }
 
-    // Calculate metrics
+    // Calculate basic metrics
     const totalEvents = events.length;
     const uniqueVisitors = new Set(events.map(event => event.clientId).filter(Boolean)).size;
-    const cartUpdates = events.filter(event => event.name === 'cart_updated').length;
+    const cartUpdates = events.filter(event => 
+      event.name === 'cart_updated' || event.name === 'product_added_to_cart'
+    ).length;
     const checkoutEvents = events.filter(event => event.name === 'checkout_started').length;
-    const conversionRate = uniqueVisitors > 0 ? (checkoutEvents / uniqueVisitors) * 100 : 0;
+    const completedCheckouts = events.filter(event => event.name === 'checkout_completed').length;
+    const conversionRate = uniqueVisitors > 0 ? (completedCheckouts / uniqueVisitors) * 100 : 0;
 
     // Count events by type
     const eventCounts: Record<string, number> = {};
@@ -162,12 +182,126 @@ export class MemStorage implements IStorage {
       eventCounts[event.name] = (eventCounts[event.name] || 0) + 1;
     });
 
+    // Calculate top events
+    const topEvents = Object.entries(eventCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Calculate revenue metrics
+    const completedCheckoutEvents = events.filter(event => event.name === 'checkout_completed');
+    const totalRevenue = completedCheckoutEvents.reduce((sum, event) => {
+      const amount = event.data?.checkout?.totalPrice?.amount || event.data?.order?.totalPrice?.amount;
+      return sum + (amount ? parseFloat(amount) : 0);
+    }, 0);
+    const averageOrderValue = completedCheckouts.length > 0 ? totalRevenue / completedCheckouts.length : 0;
+
+    // Calculate session metrics
+    const clientSessions = new Map<string, { events: number; pages: Set<string> }>();
+    events.forEach(event => {
+      if (event.clientId) {
+        if (!clientSessions.has(event.clientId)) {
+          clientSessions.set(event.clientId, { events: 0, pages: new Set() });
+        }
+        const session = clientSessions.get(event.clientId)!;
+        session.events++;
+        if (event.context?.document?.location?.pathname) {
+          session.pages.add(event.context.document.location.pathname);
+        }
+      }
+    });
+
+    const totalSessions = clientSessions.size;
+    const avgSessionEvents = totalSessions > 0 ? totalEvents / totalSessions : 0;
+    const singlePageSessions = Array.from(clientSessions.values()).filter(s => s.pages.size <= 1).length;
+    const bounceRate = totalSessions > 0 ? (singlePageSessions / totalSessions) * 100 : 0;
+
+    // Calculate period comparison (compare with previous period)
+    const getPreviousPeriodEvents = () => {
+      const allEvents = Array.from(this.pixelEvents.values());
+      
+      if (!period || period === 'all') return [];
+      
+      const now = new Date();
+      let currentStart: Date, previousStart: Date, previousEnd: Date;
+      
+      switch (period) {
+        case 'last_1h':
+          currentStart = new Date(now.getTime() - 60 * 60 * 1000);
+          previousStart = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+          previousEnd = currentStart;
+          break;
+        case 'last_24h':
+          currentStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          previousStart = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+          previousEnd = currentStart;
+          break;
+        case 'last_week':
+          currentStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          previousStart = new Date(now.getTime() - 2 * 7 * 24 * 60 * 60 * 1000);
+          previousEnd = currentStart;
+          break;
+        case 'last_month':
+          currentStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          previousStart = new Date(now.getTime() - 2 * 30 * 24 * 60 * 60 * 1000);
+          previousEnd = currentStart;
+          break;
+        default:
+          return [];
+      }
+      
+      let filteredEvents = allEvents.filter(event => {
+        const timestamp = new Date(event.timestamp);
+        return timestamp >= previousStart && timestamp <= previousEnd;
+      });
+      
+      if (shopDomain) {
+        filteredEvents = filteredEvents.filter(event => event.shopDomain === shopDomain);
+      }
+      
+      return filteredEvents;
+    };
+
+    const previousEvents = getPreviousPeriodEvents();
+    const previousUniqueVisitors = new Set(previousEvents.map(e => e.clientId).filter(Boolean)).size;
+    const previousCartUpdates = previousEvents.filter(e => 
+      e.name === 'cart_updated' || e.name === 'product_added_to_cart'
+    ).length;
+    const previousCompletedCheckouts = previousEvents.filter(e => e.name === 'checkout_completed').length;
+    const previousConversionRate = previousUniqueVisitors > 0 ? (previousCompletedCheckouts / previousUniqueVisitors) * 100 : 0;
+
+    const calculateChange = (current: number, previous: number) => {
+      if (previous === 0) return { value: 0, type: 'neutral' as const };
+      const change = ((current - previous) / previous) * 100;
+      return {
+        value: Math.round(Math.abs(change) * 100) / 100,
+        type: change > 0 ? 'increase' as const : change < 0 ? 'decrease' as const : 'neutral' as const
+      };
+    };
+
     return {
       totalEvents,
       uniqueVisitors,
       cartUpdates,
-      conversionRate: Math.round(conversionRate * 100) / 100, // Round to 2 decimal places
+      conversionRate: Math.round(conversionRate * 100) / 100,
       eventCounts,
+      topEvents,
+      revenueMetrics: {
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        averageOrderValue: Math.round(averageOrderValue * 100) / 100,
+        ordersCount: completedCheckouts
+      },
+      sessionMetrics: {
+        avgSessionEvents: Math.round(avgSessionEvents * 100) / 100,
+        bounceRate: Math.round(bounceRate * 100) / 100,
+        activeUsers: uniqueVisitors
+      },
+      periodComparison: {
+        totalEvents: calculateChange(totalEvents, previousEvents.length),
+        uniqueVisitors: calculateChange(uniqueVisitors, previousUniqueVisitors),
+        cartUpdates: calculateChange(cartUpdates, previousCartUpdates),
+        conversionRate: calculateChange(conversionRate, previousConversionRate)
+      }
     };
   }
 }

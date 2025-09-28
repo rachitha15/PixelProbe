@@ -17,9 +17,26 @@ interface MetricsResponse {
   metrics: {
     totalEvents: number;
     uniqueVisitors: number;
+    cartUpdates: number;
     conversionRate: number;
+    eventCounts: Record<string, number>;
     topEvents: { name: string; count: number }[];
-    eventsByHour: { hour: string; count: number }[];
+    revenueMetrics: {
+      totalRevenue: number;
+      averageOrderValue: number;
+      ordersCount: number;
+    };
+    sessionMetrics: {
+      avgSessionEvents: number;
+      bounceRate: number;
+      activeUsers: number;
+    };
+    periodComparison: {
+      totalEvents: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      uniqueVisitors: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      cartUpdates: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+      conversionRate: { value: number; type: 'increase' | 'decrease' | 'neutral' };
+    };
   };
 }
 
@@ -54,12 +71,14 @@ class AnalyticsApi {
 
   async getMetrics(params: {
     shopDomain?: string;
+    timeframe?: string;
     startDate?: Date;
     endDate?: Date;
   } = {}): Promise<MetricsResponse> {
     const searchParams = new URLSearchParams();
     
     if (params.shopDomain) searchParams.set('shopDomain', params.shopDomain);
+    if (params.timeframe) searchParams.set('timeframe', params.timeframe);
     if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
     if (params.endDate) searchParams.set('endDate', params.endDate.toISOString());
 
