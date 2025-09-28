@@ -69,9 +69,9 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}) {
     }
   }), [handleWebSocketMessage, shopDomain, eventName]);
 
-  // WebSocket connection
+  // WebSocket connection to Render backend
   const { isConnected, error: wsError, sendMessage } = useWebSocket(
-    `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
+    'wss://pixelprobe.onrender.com/ws',
     webSocketOptions
   );
 

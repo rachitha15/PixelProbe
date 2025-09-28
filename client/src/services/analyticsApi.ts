@@ -1,6 +1,6 @@
 import { PixelEvent } from '@shared/schema';
 
-const API_BASE_URL = '';
+const API_BASE_URL = 'https://pixelprobe.onrender.com';
 
 interface EventsResponse {
   success: boolean;
