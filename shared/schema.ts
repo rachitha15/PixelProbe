@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -9,15 +9,21 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
+// Shopify pixel events table matching the actual analytics.subscribe payload
 export const pixelEvents = pgTable("pixel_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  eventName: text("event_name").notNull(),
-  timestamp: timestamp("timestamp").notNull(),
-  customerId: text("customer_id"),
-  sessionId: text("session_id"),
-  url: text("url").notNull(),
+  shopifyEventId: text("shopify_event_id"),
+  clientId: text("client_id"),
+  name: text("name").notNull(), // event name like 'product_viewed', 'checkout_started'
+  timestamp: text("timestamp").notNull(), // ISO 8601 string from Shopify
+  seq: integer("seq"),
+  type: text("type").notNull(), // 'standard' or 'custom'
+  version: text("version"), // Shopify API version
+  source: text("source"), // Event source
+  shopId: text("shop_id"), // Shopify shop ID
+  context: jsonb("context").notNull(), // Shopify context object
+  data: jsonb("data").notNull(), // Event-specific data from Shopify
   shopDomain: text("shop_domain").notNull(),
-  eventData: jsonb("event_data").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
@@ -27,64 +33,124 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 export const insertPixelEventSchema = createInsertSchema(pixelEvents).pick({
-  eventName: true,
+  shopifyEventId: true,
+  clientId: true,
+  name: true,
   timestamp: true,
-  customerId: true,
-  sessionId: true,
-  url: true,
+  seq: true,
+  type: true,
+  version: true,
+  source: true,
+  shopId: true,
+  context: true,
+  data: true,
   shopDomain: true,
-  eventData: true,
 });
 
-// Detailed event data schemas for different event types
-export const customerDataSchema = z.object({
-  id: z.string().optional(),
-  email: z.string().optional(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
+// Shopify's actual event context structure - flexible to handle all real payloads
+export const shopifyContextSchema = z.object({
+  document: z.object({
+    title: z.string(),
+    referrer: z.string().optional(),
+    location: z.object({
+      href: z.string(),
+      host: z.string().optional(),
+      hostname: z.string().optional(),
+      origin: z.string().optional(),
+      pathname: z.string(),
+      search: z.string().optional(),
+      hash: z.string().optional(),
+    }).passthrough(), // Allow additional location fields
+  }).passthrough(), // Allow additional document fields
+  window: z.object({
+    location: z.object({
+      href: z.string(),
+      host: z.string().optional(),
+      hostname: z.string().optional(),
+      origin: z.string().optional(),
+      pathname: z.string(),
+      search: z.string().optional(),
+      hash: z.string().optional(),
+    }).passthrough(), // Allow additional location fields
+  }).passthrough().optional(), // Allow additional window fields
+  navigator: z.object({
+    userAgent: z.string(),
+  }).passthrough().optional(), // Allow additional navigator fields
+}).passthrough(); // Allow additional context fields
+
+// Shopify's actual product viewed event data
+export const productViewedDataSchema = z.object({
+  productVariant: z.object({
+    id: z.string(),
+    title: z.string(),
+    price: z.object({
+      amount: z.string(),
+      currencyCode: z.string(),
+    }),
+    product: z.object({
+      id: z.string(),
+      title: z.string(),
+      type: z.string(),
+      vendor: z.string(),
+    }),
+  }),
 });
 
-export const productDataSchema = z.object({
+// Shopify's actual checkout event data
+export const checkoutDataSchema = z.object({
+  checkout: z.object({
+    id: z.string(),
+    token: z.string(),
+    currencyCode: z.string(),
+    totalPrice: z.object({
+      amount: z.string(),
+      currencyCode: z.string(),
+    }),
+    lineItems: z.array(z.object({
+      id: z.string(),
+      quantity: z.number(),
+      title: z.string(),
+      variant: z.object({
+        id: z.string(),
+        title: z.string(),
+        price: z.object({
+          amount: z.string(),
+          currencyCode: z.string(),
+        }),
+        product: z.object({
+          id: z.string(),
+          title: z.string(),
+          vendor: z.string(),
+          type: z.string(),
+        }),
+      }),
+    })),
+    order: z.object({
+      id: z.string(),
+    }).optional(),
+  }),
+});
+
+// Base Shopify event schema - flexible to handle real payloads
+export const shopifyEventSchema = z.object({
   id: z.string(),
-  title: z.string(),
-  price: z.number(),
-  vendor: z.string().optional(),
-  type: z.string().optional(),
-  handle: z.string().optional(),
-});
-
-export const cartDataSchema = z.object({
-  total_price: z.number(),
-  item_count: z.number(),
-  currency: z.string().optional(),
-  items: z.array(z.object({
-    product_id: z.string(),
-    quantity: z.number(),
-    price: z.number(),
-    title: z.string().optional(),
-  })),
-});
-
-export const pageDataSchema = z.object({
-  title: z.string(),
-  url: z.string(),
-  path: z.string().optional(),
-});
-
-export const eventDataSchema = z.object({
-  customer: customerDataSchema.optional(),
-  product: productDataSchema.optional(),
-  cart: cartDataSchema.optional(),
-  page: pageDataSchema.optional(),
-  context: z.record(z.any()).optional(),
-});
+  clientId: z.string().optional(), // May be omitted when unavailable
+  name: z.string(),
+  timestamp: z.string(),
+  seq: z.number().optional(),
+  type: z.enum(["standard", "custom"]),
+  version: z.string().optional(),
+  source: z.string().optional(),
+  shopId: z.string().optional(),
+  context: shopifyContextSchema,
+  data: z.record(z.any()), // Event-specific data varies by event type
+}).passthrough(); // Allow additional fields Shopify might send
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertPixelEvent = z.infer<typeof insertPixelEventSchema>;
 export type PixelEvent = typeof pixelEvents.$inferSelect;
-export type EventData = z.infer<typeof eventDataSchema>;
-export type CustomerData = z.infer<typeof customerDataSchema>;
-export type ProductData = z.infer<typeof productDataSchema>;
-export type CartData = z.infer<typeof cartDataSchema>;
-export type PageData = z.infer<typeof pageDataSchema>;
+export type ShopifyEvent = z.infer<typeof shopifyEventSchema>;
+export type ShopifyContext = z.infer<typeof shopifyContextSchema>;
+export type ProductViewedData = z.infer<typeof productViewedDataSchema>;
+export type CheckoutData = z.infer<typeof checkoutDataSchema>;

@@ -60,6 +60,12 @@ export class MemStorage implements IStorage {
     const event: PixelEvent = {
       ...insertEvent,
       id,
+      shopifyEventId: insertEvent.shopifyEventId || null,
+      clientId: insertEvent.clientId || null,
+      seq: insertEvent.seq || null,
+      version: insertEvent.version || null,
+      source: insertEvent.source || null,
+      shopId: insertEvent.shopId || null,
       createdAt: new Date(),
     };
     this.pixelEvents.set(id, event);
@@ -81,7 +87,7 @@ export class MemStorage implements IStorage {
       events = events.filter(event => event.shopDomain === options.shopDomain);
     }
     if (options.eventName) {
-      events = events.filter(event => event.eventName === options.eventName);
+      events = events.filter(event => event.name === options.eventName);
     }
     if (options.startDate) {
       events = events.filter(event => new Date(event.timestamp) >= options.startDate!);
@@ -142,15 +148,15 @@ export class MemStorage implements IStorage {
 
     // Calculate metrics
     const totalEvents = events.length;
-    const uniqueVisitors = new Set(events.map(event => event.customerId).filter(Boolean)).size;
-    const cartUpdates = events.filter(event => event.eventName === 'cart_updated').length;
-    const checkoutEvents = events.filter(event => event.eventName === 'checkout_started').length;
+    const uniqueVisitors = new Set(events.map(event => event.clientId).filter(Boolean)).size;
+    const cartUpdates = events.filter(event => event.name === 'cart_updated').length;
+    const checkoutEvents = events.filter(event => event.name === 'checkout_started').length;
     const conversionRate = uniqueVisitors > 0 ? (checkoutEvents / uniqueVisitors) * 100 : 0;
 
     // Count events by type
     const eventCounts: Record<string, number> = {};
     events.forEach(event => {
-      eventCounts[event.eventName] = (eventCounts[event.eventName] || 0) + 1;
+      eventCounts[event.name] = (eventCounts[event.name] || 0) + 1;
     });
 
     return {
