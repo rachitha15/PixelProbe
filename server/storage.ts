@@ -130,6 +130,9 @@ export class MemStorage implements IStorage {
       let startDate: Date;
       
       switch (period) {
+        case 'last_1h':
+          startDate = new Date(now.getTime() - 60 * 60 * 1000);
+          break;
         case 'last_24h':
           startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
           break;

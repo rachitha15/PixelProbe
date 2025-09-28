@@ -1,13 +1,184 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { insertPixelEventSchema, shopifyEventSchema } from "@shared/schema";
+import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // CORS middleware for all API routes (needed for cross-origin requests from Shopify)
+  app.use('/api/*', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-shop-domain');
+    
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Handle pixel event submission from Shopify
+  app.post("/api/events", async (req, res) => {
+    try {
+      // Validate the incoming Shopify event payload
+      const eventData = shopifyEventSchema.parse(req.body);
+      
+      // Transform to our storage format
+      const insertData = {
+        shopifyEventId: eventData.id,
+        clientId: eventData.clientId || null,
+        name: eventData.name,
+        timestamp: eventData.timestamp,
+        seq: eventData.seq || null,
+        type: eventData.type,
+        version: eventData.version || null,
+        source: eventData.source || null,
+        shopId: eventData.shopId || null,
+        context: eventData.context,
+        data: eventData.data,
+        shopDomain: req.headers['x-shop-domain'] as string || 'unknown'
+      };
+
+      // Store the event
+      const savedEvent = await storage.createPixelEvent(insertData);
+      
+      res.status(201).json({ 
+        success: true, 
+        eventId: savedEvent.id,
+        message: 'Event received successfully' 
+      });
+    } catch (error) {
+      console.error('Error processing pixel event:', error);
+      
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ 
+          success: false, 
+          error: 'Invalid event data',
+          details: error.errors 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Internal server error' 
+        });
+      }
+    }
+  });
+
+  // Validation schema for GET /api/events query parameters
+  const eventsQuerySchema = z.object({
+    limit: z.string().optional().transform(val => val ? parseInt(val, 10) : 50)
+      .refine(val => val >= 1 && val <= 1000, { message: "Limit must be between 1 and 1000" }),
+    offset: z.string().optional().transform(val => val ? parseInt(val, 10) : 0)
+      .refine(val => val >= 0, { message: "Offset must be >= 0" }),
+    eventName: z.string().optional(),
+    shopDomain: z.string().optional()
+  });
+
+  // Get pixel events for dashboard (with pagination and filtering)
+  app.get("/api/events", async (req, res) => {
+    try {
+      const queryValidation = eventsQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid query parameters',
+          details: queryValidation.error.errors 
+        });
+      }
+
+      const { limit, offset, eventName, shopDomain } = queryValidation.data;
+      
+      const events = await storage.getPixelEvents({
+        limit,
+        offset,
+        eventName,
+        shopDomain
+      });
+      
+      res.json({
+        success: true,
+        events,
+        pagination: {
+          limit,
+          offset,
+          hasMore: events.length === limit
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch events' 
+      });
+    }
+  });
+
+  // Validation schema for GET /api/metrics query parameters
+  const metricsQuerySchema = z.object({
+    timeframe: z.enum(['1h', '24h', '7d', '30d']).default('24h'),
+    shopDomain: z.string().optional()
+  });
+
+  // Get aggregated metrics for dashboard
+  app.get("/api/metrics", async (req, res) => {
+    try {
+      const queryValidation = metricsQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid query parameters',
+          details: queryValidation.error.errors 
+        });
+      }
+
+      const { timeframe, shopDomain } = queryValidation.data;
+      
+      // Map timeframe to storage period format
+      let period: string;
+      switch (timeframe) {
+        case '1h':
+          period = 'last_1h';
+          break;
+        case '24h':
+          period = 'last_24h';
+          break;
+        case '7d':
+          period = 'last_week';
+          break;
+        case '30d':
+          period = 'last_month';
+          break;
+        default:
+          period = 'last_24h';
+      }
+
+      const metrics = await storage.getEventMetrics(shopDomain, period);
+      
+      res.json({
+        success: true,
+        metrics,
+        timeframe,
+        generated_at: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error fetching metrics:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch metrics' 
+      });
+    }
+  });
+
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      success: true, 
+      message: 'Shopify Analytics API is running',
+      timestamp: new Date().toISOString()
+    });
+  });
 
   const httpServer = createServer(app);
 
