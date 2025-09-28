@@ -3,8 +3,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Download, Settings } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import MetricsCard from "./MetricsCard";
 import EventStream from "./EventStream";
+import { useRealTimeEvents } from "../hooks/useRealTimeEvents";
+import { useAnalyticsMetrics } from "../hooks/useAnalyticsMetrics";
 
 interface DashboardProps {
   isConnected?: boolean;
@@ -12,75 +15,86 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ 
-  isConnected = true, 
+  isConnected: propIsConnected, 
   storeName = "Demo Store" 
 }: DashboardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { toast } = useToast();
 
-  // TODO: remove mock functionality
-  const mockEvents = [
-    {
-      id: "evt_001",
-      name: "page_viewed",
-      timestamp: new Date(Date.now() - 30000).toISOString(),
-      customerId: "cust_123",
-      url: "https://demo-store.myshopify.com/",
-      data: {
-        page: { title: "Home Page", url: "/" },
-        customer: { id: "cust_123", email: "john@example.com" }
-      }
-    },
-    {
-      id: "evt_002", 
-      name: "product_viewed",
-      timestamp: new Date(Date.now() - 45000).toISOString(),
-      customerId: "cust_456",
-      url: "https://demo-store.myshopify.com/products/widget",
-      data: {
-        product: { id: "prod_123", title: "Super Widget", price: 29.99 },
-        customer: { id: "cust_456", email: "jane@example.com" }
-      }
-    },
-    {
-      id: "evt_003",
-      name: "cart_updated", 
-      timestamp: new Date(Date.now() - 60000).toISOString(),
-      customerId: "cust_789",
-      url: "https://demo-store.myshopify.com/cart",
-      data: {
-        cart: { 
-          total_price: 59.98,
-          item_count: 2,
-          items: [
-            { product_id: "prod_123", quantity: 2, price: 29.99 }
-          ]
-        },
-        customer: { id: "cust_789", email: "bob@example.com" }
-      }
-    },
-    {
-      id: "evt_004",
-      name: "checkout_started",
-      timestamp: new Date(Date.now() - 90000).toISOString(), 
-      customerId: "cust_101",
-      url: "https://demo-store.myshopify.com/checkout",
-      data: {
-        checkout: { total_price: 149.99, currency: "USD" },
-        customer: { id: "cust_101", email: "alice@example.com" }
-      }
-    }
-  ];
+  // Real-time events and metrics
+  const {
+    events,
+    isLoading: eventsLoading,
+    isError: eventsError,
+    error: eventsErrorMsg,
+    isConnected: wsConnected,
+    isLiveStreamEnabled,
+    toggleLiveStream,
+    refreshEvents
+  } = useRealTimeEvents({ initialLimit: 50 });
+
+  const {
+    metrics,
+    isLoading: metricsLoading,
+    isError: metricsError,
+    error: metricsErrorMsg,
+    refetch: refetchMetrics
+  } = useAnalyticsMetrics({ events });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    console.log('Refreshing dashboard data...');
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsRefreshing(false);
+    try {
+      await Promise.all([
+        refreshEvents(),
+        refetchMetrics()
+      ]);
+      toast({
+        title: "Dashboard refreshed",
+        description: "Data has been updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Refresh failed",
+        description: "Failed to refresh dashboard data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleExport = () => {
-    console.log('Exporting data...');
+    try {
+      const exportData = {
+        events: events.slice(0, 100), // Export last 100 events
+        metrics,
+        timestamp: new Date().toISOString(),
+        storeName
+      };
+      
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
+        type: 'application/json' 
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics-export-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Export completed",
+        description: "Analytics data has been downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Failed to export analytics data",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSettings = () => {
@@ -102,10 +116,10 @@ export default function Dashboard({
         
         <div className="flex items-center gap-3">
           <Badge 
-            variant={isConnected ? "default" : "destructive"}
+            variant={wsConnected ? "default" : "destructive"}
             data-testid="badge-connection-status"
           >
-            {isConnected ? "Connected" : "Disconnected"}
+            {wsConnected ? "Connected" : "Disconnected"}
           </Badge>
           
           <Button
@@ -144,31 +158,47 @@ export default function Dashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricsCard
           title="Total Events"
-          value="12,543"
-          change={{ value: 12.5, type: 'increase', period: 'last 24h' }}
+          value={metricsLoading ? "..." : metrics.totalEvents.toLocaleString()}
+          change={{ 
+            value: metrics.recentChange.totalEvents.value, 
+            type: metrics.recentChange.totalEvents.type, 
+            period: 'last 24h' 
+          }}
           description="Events captured today"
         />
         
         <MetricsCard
           title="Unique Visitors"
-          value="2,847"
-          change={{ value: 8.2, type: 'increase', period: 'yesterday' }}
+          value={metricsLoading ? "..." : metrics.uniqueVisitors.toLocaleString()}
+          change={{ 
+            value: metrics.recentChange.uniqueVisitors.value, 
+            type: metrics.recentChange.uniqueVisitors.type, 
+            period: 'yesterday' 
+          }}
           description="Active shoppers"
           variant="success"
         />
         
         <MetricsCard
           title="Cart Updates"
-          value="456"
-          change={{ value: 3.1, type: 'decrease', period: 'last week' }}
+          value={metricsLoading ? "..." : metrics.cartUpdates.toLocaleString()}
+          change={{ 
+            value: metrics.recentChange.cartUpdates.value, 
+            type: metrics.recentChange.cartUpdates.type, 
+            period: 'last week' 
+          }}
           description="Items added to cart"
           variant="warning"
         />
         
         <MetricsCard
           title="Conversion Rate"
-          value="3.42%"
-          change={{ value: 0.5, type: 'neutral', period: 'last month' }}
+          value={metricsLoading ? "..." : `${metrics.conversionRate}%`}
+          change={{ 
+            value: metrics.recentChange.conversionRate.value, 
+            type: metrics.recentChange.conversionRate.type, 
+            period: 'last month' 
+          }}
           description="Purchase completion"
         />
       </div>
@@ -185,9 +215,16 @@ export default function Dashboard({
         </div>
         
         <EventStream 
-          events={mockEvents}
-          isLive={isConnected}
-          onToggleLive={() => console.log('Toggle live stream')}
+          events={events.map(event => ({
+            id: event.id,
+            name: event.name,
+            timestamp: event.timestamp,
+            customerId: event.clientId,
+            url: event.context?.document?.location?.href || 'Unknown',
+            data: event.data
+          }))}
+          isLive={isLiveStreamEnabled}
+          onToggleLive={toggleLiveStream}
         />
       </Card>
     </div>
