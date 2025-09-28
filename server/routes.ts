@@ -48,8 +48,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Handle pixel event submission from Shopify
   app.post("/api/events", async (req, res) => {
     try {
-      // Validate the incoming Shopify event payload
-      const eventData = shopifyEventSchema.parse(req.body);
+      // Validate the incoming wrapper payload from our pixel code
+      const wrapperData = pixelWrapperSchema.parse(req.body);
+      
+      // Extract the actual Shopify event data from the wrapper
+      const eventData = wrapperData.eventData;
       
       // Transform to our storage format
       const insertData = {
@@ -64,7 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         shopId: eventData.shopId || null,
         context: eventData.context,
         data: eventData.data,
-        shopDomain: req.headers['x-shop-domain'] as string || 'unknown'
+        shopDomain: wrapperData.shopDomain
       };
 
       // Store the event
