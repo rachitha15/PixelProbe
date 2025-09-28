@@ -6,9 +6,17 @@ export function serveStatic(app: Express) {
   const distPath = path.resolve(import.meta.dirname, "public");
 
   if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
-    );
+    // API-only mode: serve a simple message for non-API routes
+    console.log(`API-only mode: ${distPath} not found, serving API endpoints only`);
+    app.use("*", (_req, res) => {
+      res.status(200).json({ 
+        message: "Shopify Analytics API", 
+        status: "running",
+        endpoints: ["/api/events", "/api/metrics"],
+        timestamp: new Date().toISOString()
+      });
+    });
+    return;
   }
 
   app.use(express.static(distPath));
