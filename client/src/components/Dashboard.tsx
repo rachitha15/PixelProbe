@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Download, Settings } from "lucide-react";
+import { RefreshCw, Download, Settings, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import MetricsCard from "./MetricsCard";
 import EventStream from "./EventStream";
@@ -97,6 +97,40 @@ export default function Dashboard({
     }
   };
 
+  const handleReset = async () => {
+    try {
+      const response = await fetch('https://pixelprobe.onrender.com/api/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      // Refresh data after reset
+      await Promise.all([
+        refreshEvents(),
+        refetchMetrics()
+      ]);
+      
+      toast({
+        title: "Data reset successful",
+        description: "All events and metrics have been cleared",
+      });
+    } catch (error) {
+      toast({
+        title: "Reset failed",
+        description: "Failed to reset analytics data",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSettings = () => {
     console.log('Opening settings...');
   };
@@ -131,6 +165,16 @@ export default function Dashboard({
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            data-testid="button-reset"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Reset Data
           </Button>
           
           <Button
