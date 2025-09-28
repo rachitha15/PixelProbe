@@ -6,25 +6,19 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// CORS middleware to allow Shopify domains
+// CORS middleware to allow Shopify domains and handle pixel sandbox environments
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Allow requests from Shopify domains and localhost (for development)
-  if (origin && (origin.endsWith('.myshopify.com') || origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    // For published apps, allow all origins (you can restrict this later)
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-  
+  // Always set CORS headers for all requests
+  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+  res.header('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
   
-  // Handle preflight requests
+  // Handle preflight OPTIONS requests immediately
   if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
+    res.status(200).end();
     return;
   }
   
