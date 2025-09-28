@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopify Web Pixel Test</title>
+    <meta name="shopify-shop-domain" content="test-store.myshopify.com">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: #f4f4f4;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .test-section {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .test-button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        
+        .test-button:hover {
+            background: #005a87;
+        }
+        
+        .console-log {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Shopify Web Pixel Test Page</h1>
+        <p>This page simulates a Shopify store to test the web pixel functionality.</p>
+        <div id="status" class="status info">
+            <strong>Status:</strong> Initializing pixel...
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Configuration</h2>
+        <p>
+            <label for="apiEndpoint">API Endpoint:</label><br>
+            <input type="text" id="apiEndpoint" value="http://localhost:5000/api/events" style="width: 100%; padding: 8px; margin: 5px 0;">
+        </p>
+        <button class="test-button" onclick="updateEndpoint()">Update Endpoint</button>
+        <button class="test-button" onclick="testConnection()">Test Connection</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Events</h2>
+        <p>Click these buttons to simulate Shopify analytics events:</p>
+        
+        <h3>Page Events</h3>
+        <button class="test-button" onclick="simulateEvent('page_viewed')">Page Viewed</button>
+        <button class="test-button" onclick="simulateEvent('product_viewed')">Product Viewed</button>
+        <button class="test-button" onclick="simulateEvent('collection_viewed')">Collection Viewed</button>
+        
+        <h3>Cart Events</h3>
+        <button class="test-button" onclick="simulateEvent('product_added_to_cart')">Add to Cart</button>
+        <button class="test-button" onclick="simulateEvent('cart_viewed')">View Cart</button>
+        <button class="test-button" onclick="simulateEvent('cart_updated')">Update Cart</button>
+        
+        <h3>Checkout Events</h3>
+        <button class="test-button" onclick="simulateEvent('checkout_started')">Start Checkout</button>
+        <button class="test-button" onclick="simulateEvent('payment_info_submitted')">Submit Payment</button>
+        <button class="test-button" onclick="simulateEvent('checkout_completed')">Complete Order</button>
+        
+        <h3>Other Events</h3>
+        <button class="test-button" onclick="simulateEvent('search_submitted')">Search</button>
+        <button class="test-button" onclick="simulateEvent('form_submitted')">Form Submit</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Output</h2>
+        <button class="test-button" onclick="clearConsole()">Clear Console</button>
+        <div id="consoleOutput" class="console-log">
+            Console output will appear here...
+        </div>
+    </div>
+
+    <!-- Mock Shopify analytics object -->
+    <script>
+        // Mock Shopify analytics for testing
+        window.analytics = {
+            subscribe: function(eventName, callback) {
+                if (!window.analyticsSubscriptions) {
+                    window.analyticsSubscriptions = {};
+                }
+                window.analyticsSubscriptions[eventName] = callback;
+                console.log('Mock analytics subscribed to:', eventName);
+            }
+        };
+
+        // Console capture for display
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        
+        function appendToConsole(message, type = 'log') {
+            const consoleOutput = document.getElementById('consoleOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'warn' ? '⚠️' : '📝';
+            consoleOutput.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            appendToConsole(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            appendToConsole(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalConsoleWarn.apply(console, args);
+            appendToConsole(args.join(' '), 'warn');
+        };
+
+        // Test functions
+        function updateEndpoint() {
+            const newEndpoint = document.getElementById('apiEndpoint').value;
+            // This would require modifying the pixel code to support dynamic endpoint changes
+            console.log('API endpoint would be updated to:', newEndpoint);
+            updateStatus('Endpoint updated to: ' + newEndpoint, 'info');
+        }
+
+        function testConnection() {
+            const endpoint = document.getElementById('apiEndpoint').value;
+            fetch(endpoint.replace('/events', '/health'))
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Connection test successful:', data);
+                    updateStatus('✅ Connection successful!', 'success');
+                })
+                .catch(error => {
+                    console.error('Connection test failed:', error);
+                    updateStatus('❌ Connection failed: ' + error.message, 'error');
+                });
+        }
+
+        function simulateEvent(eventName) {
+            if (!window.analyticsSubscriptions || !window.analyticsSubscriptions[eventName]) {
+                console.error('No subscription found for event:', eventName);
+                return;
+            }
+
+            const mockEventData = generateMockEventData(eventName);
+            console.log(`Simulating ${eventName} event:`, mockEventData);
+            
+            // Call the subscribed handler
+            window.analyticsSubscriptions[eventName](mockEventData);
+        }
+
+        function generateMockEventData(eventName) {
+            const baseEvent = {
+                id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                clientId: `client_${Math.random().toString(36).substr(2, 9)}`,
+                name: eventName,
+                timestamp: new Date().toISOString(),
+                seq: Math.floor(Math.random() * 1000),
+                type: 'standard',
+                version: '1.0',
+                source: 'web_pixel',
+                shopId: 'shop_test_123',
+                context: {
+                    document: {
+                        location: {
+                            href: window.location.href,
+                            pathname: window.location.pathname
+                        },
+                        title: document.title
+                    },
+                    navigator: {
+                        userAgent: navigator.userAgent
+                    }
+                }
+            };
+
+            // Add event-specific data
+            const eventSpecificData = {
+                'product_viewed': {
+                    product: {
+                        id: '123456789',
+                        title: 'Test Product',
+                        vendor: 'Test Vendor',
+                        type: 'test-product',
+                        price: '29.99',
+                        currency: 'USD'
+                    }
+                },
+                'product_added_to_cart': {
+                    product: {
+                        id: '123456789',
+                        title: 'Test Product',
+                        quantity: 1,
+                        price: '29.99',
+                        currency: 'USD'
+                    }
+                },
+                'search_submitted': {
+                    search: {
+                        query: 'test product',
+                        results_count: 42
+                    }
+                },
+                'checkout_completed': {
+                    order: {
+                        id: 'order_' + Math.random().toString(36).substr(2, 9),
+                        total_price: '29.99',
+                        currency: 'USD',
+                        line_items_count: 1
+                    }
+                }
+            };
+
+            return {
+                ...baseEvent,
+                data: eventSpecificData[eventName] || {}
+            };
+        }
+
+        function clearConsole() {
+            document.getElementById('consoleOutput').textContent = '';
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        // Initialize
+        window.addEventListener('load', function() {
+            console.log('Test page loaded. Mock analytics object available.');
+            updateStatus('✅ Ready to test! Mock analytics initialized.', 'success');
+        });
+    </script>
+
+    <!-- Load the actual web pixel code -->
+    <script>
+        // Inline a modified version of the pixel code for testing
+        // In production, this would be loaded from shopify-web-pixel.js
+        const PIXEL_CODE = `
+        // Note: In this test environment, replace the API_ENDPOINT manually
+        // or modify the pixel code to read from the input field
+        console.log('Loading Shopify Web Pixel for testing...');
+        `;
+        
+        // You can uncomment this line to load the actual pixel code:
+        // document.head.appendChild(Object.assign(document.createElement('script'), {src: 'shopify-web-pixel.js'}));
+        
+        console.log('Test environment ready. Use the buttons above to simulate events.');
+    </script>
+</body>
+</html>
