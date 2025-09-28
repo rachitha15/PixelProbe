@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertPixelEventSchema, shopifyEventSchema } from "@shared/schema";
+import { insertPixelEventSchema, pixelWrapperSchema } from "@shared/schema";
 import { z } from "zod";
 
 // Enhanced WebSocket client store with liveness tracking

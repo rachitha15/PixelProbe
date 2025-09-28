@@ -146,6 +146,14 @@ export const shopifyEventSchema = z.object({
   data: z.record(z.any()), // Event-specific data varies by event type
 }).passthrough(); // Allow additional fields Shopify might send
 
+// Wrapper schema for the format sent by our pixel code
+export const pixelWrapperSchema = z.object({
+  eventName: z.string(),
+  eventData: shopifyEventSchema,
+  timestamp: z.string(),
+  shopDomain: z.string(),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertPixelEvent = z.infer<typeof insertPixelEventSchema>;
@@ -154,3 +162,4 @@ export type ShopifyEvent = z.infer<typeof shopifyEventSchema>;
 export type ShopifyContext = z.infer<typeof shopifyContextSchema>;
 export type ProductViewedData = z.infer<typeof productViewedDataSchema>;
 export type CheckoutData = z.infer<typeof checkoutDataSchema>;
+export type PixelWrapper = z.infer<typeof pixelWrapperSchema>;
