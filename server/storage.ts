@@ -25,6 +25,9 @@ export interface IStorage {
     conversionRate: number;
     eventCounts: Record<string, number>;
   }>;
+  
+  // Reset methods for demo/testing
+  clearAllEvents(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -303,6 +306,11 @@ export class MemStorage implements IStorage {
         conversionRate: calculateChange(conversionRate, previousConversionRate)
       }
     };
+  }
+
+  // Reset methods for demo/testing
+  async clearAllEvents(): Promise<void> {
+    this.pixelEvents.clear();
   }
 }
 

@@ -299,6 +299,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }, 30000); // Every 30 seconds
 
+  // Reset endpoint for demo/testing - clears all events and metrics
+  app.post("/api/reset", async (req, res) => {
+    try {
+      await storage.clearAllEvents();
+      
+      // Broadcast reset event to all connected clients
+      broadcastEvent('reset', { message: 'All data cleared' });
+      
+      res.json({
+        success: true,
+        message: 'All events and metrics have been reset',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error resetting data:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to reset data' 
+      });
+    }
+  });
+
   // Clean up interval on server shutdown
   process.on('SIGINT', () => {
     clearInterval(heartbeatInterval);
