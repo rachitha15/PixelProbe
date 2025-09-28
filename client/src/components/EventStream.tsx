@@ -10,8 +10,9 @@ interface EventData {
   id: string;
   name: string;
   timestamp: string;
-  customerId?: string;
-  url: string;
+  clientId?: string | null;
+  shopDomain: string;
+  context: any;
   data: Record<string, any>;
 }
 
@@ -37,8 +38,8 @@ export default function EventStream({
     if (searchTerm) {
       filtered = filtered.filter(event => 
         event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.customerId?.toLowerCase().includes(searchTerm.toLowerCase())
+        event.shopDomain.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.clientId?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 

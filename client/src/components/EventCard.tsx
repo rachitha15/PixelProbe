@@ -8,8 +8,9 @@ interface EventData {
   id: string;
   name: string;
   timestamp: string;
-  customerId?: string;
-  url: string;
+  clientId?: string | null;
+  shopDomain: string;
+  context: any;
   data: Record<string, any>;
 }
 
@@ -20,6 +21,7 @@ interface EventCardProps {
 const EVENT_COLORS = {
   page_viewed: "bg-blue-500",
   product_viewed: "bg-green-500", 
+  product_added_to_cart: "bg-orange-500",
   cart_updated: "bg-orange-500",
   checkout_started: "bg-purple-500",
   payment_info_submitted: "bg-indigo-500",
@@ -61,9 +63,9 @@ export default function EventCard({ event }: EventCardProps) {
         </div>
         
         <div className="flex items-center gap-2">
-          {event.customerId && (
+          {event.clientId && (
             <Badge variant="secondary" data-testid={`badge-customer-${event.id}`}>
-              Customer: {event.customerId}
+              Customer: {event.clientId}
             </Badge>
           )}
           <Button
@@ -79,7 +81,9 @@ export default function EventCard({ event }: EventCardProps) {
 
       <div className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
         <ExternalLink className="w-3 h-3" />
-        <span className="truncate" data-testid={`text-url-${event.id}`}>{event.url}</span>
+        <span className="truncate" data-testid={`text-url-${event.id}`}>
+          {(event.context as any)?.document?.location?.href || event.shopDomain}
+        </span>
       </div>
 
       {isExpanded && (

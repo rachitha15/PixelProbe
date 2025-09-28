@@ -219,9 +219,10 @@ export default function Dashboard({
             id: event.id,
             name: event.name,
             timestamp: event.timestamp,
-            customerId: event.clientId,
-            url: event.context?.document?.location?.href || 'Unknown',
-            data: event.data
+            clientId: event.clientId,
+            shopDomain: event.shopDomain,
+            context: event.context,
+            data: event.data as Record<string, any>
           }))}
           isLive={isLiveStreamEnabled}
           onToggleLive={toggleLiveStream}

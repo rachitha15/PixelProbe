@@ -129,7 +129,8 @@ export function useAnalyticsMetrics(options: UseAnalyticsMetricsOptions = {}) {
 
     // Calculate revenue metrics
     const totalRevenue = completedCheckouts.reduce((sum, event) => {
-      const amount = event.data?.checkout?.totalPrice?.amount || event.data?.order?.totalPrice?.amount;
+      const eventData = event.data as any;
+      const amount = eventData?.checkout?.totalPrice?.amount || eventData?.order?.totalPrice?.amount;
       return sum + (amount ? parseFloat(amount) : 0);
     }, 0);
     const averageOrderValue = completedCheckouts.length > 0 ? totalRevenue / completedCheckouts.length : 0;
@@ -143,8 +144,9 @@ export function useAnalyticsMetrics(options: UseAnalyticsMetricsOptions = {}) {
         }
         const session = clientSessions.get(event.clientId)!;
         session.events++;
-        if (event.context?.document?.location?.pathname) {
-          session.pages.add(event.context.document.location.pathname);
+        const eventContext = event.context as any;
+        if (eventContext?.document?.location?.pathname) {
+          session.pages.add(eventContext.document.location.pathname);
         }
       }
     });
